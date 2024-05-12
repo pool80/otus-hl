@@ -1,0 +1,1 @@
+# Строим кластер - Pacemaker, Corosync
