@@ -10,8 +10,9 @@ resource "yandex_vpc_subnet" "subnet-1" {
 }
 
 resource "yandex_compute_instance" "vm" {
-  count = var.instances
-  name  = "pcs-${count.index + 1}"
+  count      = var.instances
+  name       = "vm-${count.index + 1}"
+  hostname   = "vm-${count.index + 1}"
   resources {
     cores  = 2
     memory = 2
@@ -42,11 +43,8 @@ resource "yandex_compute_instance" "vm" {
       <<EOT
 sudo setenforce 0
 sudo sed -i "s/SELINUX=enforcing/SELINUX=permissive/" /etc/selinux/config
+sudo yum install -y yum-utils
 EOT
     ]
   }
-
-  # provisioner "local-exec" {
-  #   command = "ansible-playbook -u ${var.vm_user} -i '${self.network_interface[0].nat_ip_address},' --private-key ${var.ssh_key_private} provision.yml"
-  # }
 }
