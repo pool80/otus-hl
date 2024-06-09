@@ -1,0 +1,33 @@
+---
+- name: Install and setup iSCSI and Pacemaker cluster
+  hosts: all
+  become: true
+
+  vars:
+    common_packages:
+      - chrony
+      - pacemaker
+      - pcs
+      - psmisc
+      - policycoreutils-python3
+      - lvm2
+      - lvm2-lockd
+      - gfs2-utils
+      - dlm
+
+  tasks:
+    - name: Install Pacemaker packages and configure hosts
+      include_tasks: "install_pacemaker.yaml"
+      when: inventory_hostname in groups["vm"]
+
+    # - name: Install iSCSI target
+    #   include_tasks: "install_iscsi-target.yaml"
+    #   when: inventory_hostname in groups["iscsi-target"]
+
+    # - name: Install iSCSI initiator
+    #   include_tasks: "install_iscsi-initiator.yaml"
+    #   when: inventory_hostname in groups["vm"]
+
+    - name: Init cluster
+      include_tasks: "init_cluster.yaml"
+      when: inventory_hostname in groups["vm"]

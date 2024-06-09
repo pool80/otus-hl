@@ -1,0 +1,70 @@
+- name: Change pacemaker password
+  ansible.builtin.user:
+    name: hacluster
+    password: mysupersecretpassword
+    state: present
+
+- name: Configure LVM
+  ansible.builtin.lineinfile:
+    path: "/etc/lvm/lvm.conf"
+    line: "       use_lvmlockd = 1"
+    search_string: "use_lvmlockd"
+
+- name: Set var for node list
+  ansible.builtin.set_fact:
+    node_list: "{% for i in groups.vm %}{{ i }} {% endfor %}"
+  run_once: true
+
+
+- name: "[Re]Create cluster and configure dlm and lvmlockd"
+  ansible.builtin.shell:
+    cmd: |
+      pcs host auth {{ node_list }} -u hacluster -p mysupersecretpassword
+      pcs cluster setup otus_cluster {{ node_list }} --force
+      pcs cluster enable --all
+      pcs cluster start --all
+      sleep 30
+      pcs property set no-quorum-policy=freeze
+      pcs property set stonith-enabled=false
+      pcs resource create dlm systemd:dlm op monitor interval=30s on-fail=ignore clone interleave=true ordered=true
+      pcs resource create lvmlockd ocf:heartbeat:lvmlockd op monitor interval=30s on-fail=ignore clone interleave=true ordered=true
+      pcs constraint order start dlm-clone then lvmlockd-clone
+      sleep 30
+  run_once: true
+
+- name: Create VG
+  community.general.lvg:
+    vg: otus_vg
+    pvs: /dev/vda
+    vg_options: "--shared --locktype dlm" 
+  run_once: true
+
+- name: Create LV
+  community.general.lvol:
+    vg: otus_vg
+    lv: cluster_lv
+    size: "5G"
+    opts: "-an"
+  run_once: true
+   
+- name: Create resource for shared activation of VG otus_vg
+  ansible.builtin.shell:
+    cmd: |
+      pcs resource create otus_vg ocf:heartbeat:LVM-activate vgname=otus_vg vg_access_mode=lvmlockd activation_mode=shared op start timeout=90s interval=0 op stop timeout=90s interval=0 op monitor interval=30s timeout=90s clone        
+      pcs constraint order start lvmlockd-clone then otus_vg-clone
+      sleep 30
+  run_once: true
+
+- name: Create GFS2 on logical volume
+  ansible.builtin.expect:
+    command: "mkfs.gfs2 -j3 -p lock_dlm -t otus_cluster:gfs2 /dev/otus_vg/cluster_lv"
+    responses:
+      (?m)^Are you sure you want to proceed.*: "y"
+  run_once: true
+
+- name: Create GFS2 resource
+  ansible.builtin.shell:
+    cmd: |
+      pcs resource create clusterfs ocf:heartbeat:Filesystem device="/dev/otus_vg/cluster_lv" directory="/mnt/gfs2" fstype="gfs2" "options=noatime" op monitor interval=10s on-fail=ignore clone interleave=true
+      pcs constraint order start otus_vg-clone then clusterfs-clone
+  run_once: true

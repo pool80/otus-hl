@@ -1,3 +1,7 @@
+variable "yc_zones" {
+  type    = list(string)
+  default = ["ru-central1-a", "ru-central1-b", "ru-central1-c"]
+}
 variable "alma9" {
   type    = string
   default = "fd87ihr5mbkcrv7mrvtp"

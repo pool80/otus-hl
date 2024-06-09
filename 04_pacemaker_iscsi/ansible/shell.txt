@@ -1,0 +1,22 @@
+sudo dnf install -y chrony
+dnf config-manager --set-enabled highavailability
+dnf config-manager --set-enabled resilientstorage
+dnf install -y pacemaker pcs psmisc policycoreutils-python3
+systemctl start pcsd.service
+systemctl enable pcsd.service
+echo mysupersecretpassword | passwd --stdin hacluster
+
+
+pcs host auth vm-3.ru-central1.internal vm-2.ru-central1.internal vm-1.ru-central1.internal -u hacluster -p mysupersecretpassword
+pcs cluster setup mycluster  vm-3.ru-central1.internal vm-2.ru-central1.internal vm-1.ru-central1.internal
+pcs cluster start --all
+pcs property set stonith-enabled=false
+
+dnf install lvm2-lockd gfs2-utils dlm -y
+pcs property set no-quorum-policy=freeze
+pcs resource create dlm systemd:dlm op monitor interval=30s on-fail=ignore clone interleave=true ordered=true
+pcs resource create lvm2-lockd ocf:heartbeat:lvm2-lockd op monitor interval=30s on-fail=ignore clone interleave=true ordered=true
+pcs constraint order start dlm-clone then clvmd-clone
+ pcs status resources
+
+pcs resource create ocf:heartbeat:LVM-activate
